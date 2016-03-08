@@ -1,0 +1,7 @@
+=== Compilation...
+=== MPI_Send bandwidth benchmark ===
+latency: 0.001693ms
+=== MPI_Ssend bandwidth benchmark ===
+latency: 0.002503ms
+=== MPI_Bsend bandwidth benchmark ===
+latency: 0.101590ms
