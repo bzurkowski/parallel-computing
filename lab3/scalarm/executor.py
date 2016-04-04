@@ -1,45 +1,39 @@
 #!/usr/bin/env python2.6
-import os, subprocess, sys, tarfile, json, shlex
+import os, subprocess
 
-def get_json(file_name):
-    with open(file_name, 'rb+') as input_file:
-        h = json.JSONDecoder().decode(input_file.read())
-    return h
+current_dir = os.path.dirname(os.path.realpath(__file__))
 
-def make_tarfile(file_name, output_filename):
-    from contextlib import closing
-    with closing(tarfile.open(output_filename, "w:gz")) as tar:
-        tar.add(file_name)
+# load input params
+with open('input.txt', 'r') as input_file:
+    input_data = input_file.read().split()
+    ncores   = int(input_data[0])
+    npoints  = int(input_data[1])
+    scalable = True if input_data[2] in ['True', 'true', '1'] else False
 
-current_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+# scale problem if for purpose of scalable metrics
+if scalable and ncores > 1:
+    npoints *= ncores
 
-input_json = get_json('input.json')
-
-num_points = input_json['num_points']
-num_procs  = input_json['num_procs']
-
-mpicc_cmd   = "mpicc -o monte_carlo %s/monte_carlo.c" % current_dir
-mpiexec_cmd = "mpiexec -np %s ./monte_carlo %s" % (num_procs, num_points)
+# prepare exec commands
+mpicc_command   = "mpicc -o {dir}/monte_carlo {dir}/monte_carlo.c".format(dir=current_dir)
+mpiexec_command = "mpiexec -np {ncores} {dir}/monte_carlo {npoints}".format(ncores=ncores, dir=current_dir, npoints=npoints)
 
 commands = [
     'module load mvapich2',
     'module load mpiexec',
-    mpicc_cmd,
-    mpiexec_cmd
+    mpicc_command,
+    mpiexec_command
 ]
 
 command = ' && '.join(commands)
 
-out = None
+# run exec commands
+output = None
 try:
-    out = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE).stdout.read()
+    output = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE).stdout.read()
 except subprocess.CalledProcessError as e:
-    out = e.output
+    output = e.output
 
+# write output to file
 with open('output.txt', 'wb+') as output_file:
-    output_file.write(out)
-
-with open('output.json', 'wb+') as output_file:
-    output_file.write(json.JSONEncoder().encode({'status': 'ok', 'results': {'walltime': float(out)}}))
-
-make_tarfile('output.txt', 'output.tar.gz')
+    output_file.write('{0}'.format(output))
