@@ -1,1 +1,1 @@
-{ "num_points": 10000, "num_procs": 4 }
+{ "ncores": 4, "npoints": 100000, "scalable": "true" }
