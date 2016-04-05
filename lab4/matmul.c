@@ -50,7 +50,7 @@ void print_mat(double **matrix, int nrows, int ncols) {
 int main(int argc, char **argv)
 {
   int world_rank, world_size;
-  int ncols_per_proc, ncols_overhead;
+  int ncols_per_proc, ncols_overhead, ncols_padding;
   int arows, acols, bcols, asize;
   int i, j, k, retry;
   double **a, **b, **c, **bcol, **ccol;
@@ -80,11 +80,18 @@ int main(int argc, char **argv)
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
   ncols_overhead = bcols & world_size;
-  ncols_per_proc = bcols / world_size;
+  ncols_padding = 0;
+
+  if (ncols_overhead) {
+    ncols_padding = world_size - ncols_overhead;
+    ncols_per_proc = (bcols + ncols_padding)  / world_size;
+  } else {
+    ncols_per_proc = bcols / world_size;
+  }
 
   MPI_Type_vector(acols,
     1,
-    bcols,
+    bcols + ncols_padding,
     MPI_DOUBLE,
     &send_bcol_type0
   );
@@ -129,7 +136,7 @@ int main(int argc, char **argv)
   MPI_Type_vector(
     arows,
     1,
-    bcols,
+    bcols + ncols_padding,
     MPI_DOUBLE,
     &recv_ccol_type0
   );
@@ -148,10 +155,10 @@ int main(int argc, char **argv)
 
   if (world_rank == 0) {
     a = rand_mat(arows, acols);
-    b = rand_mat(acols, bcols);
+    b = rand_mat(acols, bcols + ncols_padding);
     bpt = *b;
 
-    c = alloc_mat(arows, bcols);
+    c = alloc_mat(arows, bcols + ncols_padding);
     cpt = *c;
   } else {
     a = alloc_mat(arows, acols);
@@ -210,24 +217,11 @@ int main(int argc, char **argv)
       MPI_COMM_WORLD
     );
 
-    if (world_rank == 0) {
-      for (i = bcols - ncols_overhead; i < bcols; i++) {
-        for (j = 0; j < arows; j++) {
-          sum = 0;
-
-          for (k = 0; k < acols; k++) {
-            sum += a[j][k] * b[k][i];
-          }
-
-          c[j][i] = sum;
-        }
-      }
-    }
-
     total_time += MPI_Wtime() - start_time;
   }
 
   if (world_rank == 0) {
+    print_mat(c, arows, bcols);
     printf("%f", total_time / RETRIES_COUNT);
   }
 
