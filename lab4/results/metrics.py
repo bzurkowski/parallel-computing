@@ -73,7 +73,7 @@ def calculate_metrics(results, scalable=False, key_mappings={}):
                 speedup *= ncores
 
             efficiency = speedup / ncores
-            serial_fraction = (1 / speedup - 1 / ncores) / (1 - 1 / ncores)
+            serial_fraction = (1. / speedup - 1. / ncores) / (1. - 1. / ncores)
 
             results_entry['speedup'] = speedup
             results_entry['efficiency'] = efficiency

@@ -50,7 +50,7 @@ void print_mat(double **matrix, int nrows, int ncols) {
 int main(int argc, char **argv)
 {
   int world_rank, world_size;
-  int ncols_per_proc, ncols_overhead, ncols_padding;
+  int ncols_per_proc;
   int arows, acols, bcols, asize;
   int i, j, k, retry;
   double **a, **b, **c, **bcol, **ccol;
@@ -79,19 +79,11 @@ int main(int argc, char **argv)
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-  ncols_overhead = bcols & world_size;
-  ncols_padding = 0;
-
-  if (ncols_overhead) {
-    ncols_padding = world_size - ncols_overhead;
-    ncols_per_proc = (bcols + ncols_padding)  / world_size;
-  } else {
-    ncols_per_proc = bcols / world_size;
-  }
+  ncols_per_proc = bcols / world_size;
 
   MPI_Type_vector(acols,
     1,
-    bcols + ncols_padding,
+    bcols,
     MPI_DOUBLE,
     &send_bcol_type0
   );
@@ -136,7 +128,7 @@ int main(int argc, char **argv)
   MPI_Type_vector(
     arows,
     1,
-    bcols + ncols_padding,
+    bcols,
     MPI_DOUBLE,
     &recv_ccol_type0
   );
@@ -155,10 +147,10 @@ int main(int argc, char **argv)
 
   if (world_rank == 0) {
     a = rand_mat(arows, acols);
-    b = rand_mat(acols, bcols + ncols_padding);
+    b = rand_mat(acols, bcols);
     bpt = *b;
 
-    c = alloc_mat(arows, bcols + ncols_padding);
+    c = alloc_mat(arows, bcols);
     cpt = *c;
   } else {
     a = alloc_mat(arows, acols);
@@ -171,8 +163,8 @@ int main(int argc, char **argv)
 
   for (retry = 0; retry < RETRIES_COUNT; retry++) {
     MPI_Barrier(MPI_COMM_WORLD);
-    start_time = MPI_Wtime();
 
+    if (world_rank == 0) start_time = MPI_Wtime();
 
     MPI_Bcast(*a, asize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -199,13 +191,6 @@ int main(int argc, char **argv)
       }
     }
 
-    //         0 1 2
-    //         3 4 5
-    //         6 7 8
-    //  0 1 2  o x x
-    //  3 4 5  o x x
-    //  6 7 8  o x x
-
     MPI_Gather(
       (*ccol),
       ncols_per_proc,
@@ -221,7 +206,7 @@ int main(int argc, char **argv)
   }
 
   if (world_rank == 0) {
-    print_mat(c, arows, bcols);
+    // print_mat(c, arows, bcols);
     printf("%f", total_time / RETRIES_COUNT);
   }
 

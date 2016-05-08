@@ -23,10 +23,10 @@ if __name__ == '__main__':
     plt.figure(figsize=(22, 16), dpi=80)
 
     metrics_type = 'scalable' if args.scalable else 'non-scalable'
-    plot_title = 'Matrix multiplication - %s metrics of parallel computation' % metrics_type
+    plot_title = 'Matri multiplication - %s metrics of parallel computation' % metrics_type
     plt.suptitle(plot_title, size=24)
 
-    plot_opts   = {'label': lambda npoints: '%s points' % npoints}
+    plot_opts   = {'label': lambda size: 'Size: %s' % size}
     legend_opts = {'loc': 'upper center', 'ncol': 3}
 
     plt.subplot(2, 2, 1)
