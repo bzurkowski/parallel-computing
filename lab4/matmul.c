@@ -2,7 +2,118 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-# define RETRIES_COUNT 10
+# define RETRIES_COUNT 1
+
+
+double **alloc_mat(int nrows, int ncols);
+double **rand_mat(int nrows, int ncols);
+void print_mat(double **matrix, int nrows, int ncols);
+
+
+int main(int argc, char **argv)
+{
+  int world_rank, world_size;
+  int ncols_per_proc;
+  int size;
+  int i, j, k, retry;
+  double **a, **b, **c;
+  double sum;
+  double start_time, total_time;
+
+  MPI_Datatype column_type0, column_type;
+
+  if (argc != 2) {
+    fprintf(stderr, "Usage: ./matmul size\n");
+    exit(1);
+  }
+
+  size = atoi(argv[1]);
+
+  MPI_Init(NULL, NULL);
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+  ncols_per_proc = size / world_size;
+
+  c = alloc_mat(size, size);
+
+  if (world_rank == 0) {
+      a = rand_mat(size, size);
+      b = rand_mat(size, size);
+  } else {
+      a = alloc_mat(size, size);
+      b = alloc_mat(size, size);
+  }
+
+  MPI_Type_vector(size,
+    1,
+    size,
+    MPI_DOUBLE,
+    &column_type0
+  );
+
+  MPI_Type_create_resized(
+    column_type0,
+    0,
+    sizeof(double),
+    &column_type
+  );
+
+  MPI_Type_commit(&column_type);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  start_time = MPI_Wtime();
+
+  for (retry = 0; retry < RETRIES_COUNT; retry++) {
+    MPI_Bcast(*a, size * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    MPI_Scatter(
+      (*b),
+      ncols_per_proc,
+      column_type,
+      (*b),
+      ncols_per_proc,
+      column_type,
+      0,
+      MPI_COMM_WORLD
+    );
+
+    for (i = 0; i < size; i++) {
+      for (j = 0; j < ncols_per_proc; j++) {
+        sum = 0;
+
+        for (k = 0; k < size; k++) {
+          sum += a[i][k] * b[k][j];
+        }
+
+        c[i][j] = sum;
+      }
+    }
+
+    MPI_Gather(
+      (*c),
+      ncols_per_proc,
+      column_type,
+      (*c),
+      ncols_per_proc,
+      column_type,
+      0,
+      MPI_COMM_WORLD
+    );
+  }
+
+  total_time = MPI_Wtime() - start_time;
+
+  if (world_rank == 0) {
+    printf("%f", total_time / RETRIES_COUNT);
+  }
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Finalize();
+
+  return 0;
+}
 
 double **alloc_mat(int nrows, int ncols) {
   int mat_size, i;
@@ -45,173 +156,4 @@ void print_mat(double **matrix, int nrows, int ncols) {
     }
     printf("\n");
   }
-}
-
-int main(int argc, char **argv)
-{
-  int world_rank, world_size;
-  int ncols_per_proc;
-  int arows, acols, bcols, asize;
-  int i, j, k, retry;
-  double **a, **b, **c, **bcol, **ccol;
-  void *bpt, *cpt;
-  double sum, start_time, total_time;
-
-  MPI_Datatype send_bcol_type0, send_bcol_type;
-  MPI_Datatype recv_bcol_type0, recv_bcol_type;
-
-  MPI_Datatype send_ccol_type0, send_ccol_type;
-  MPI_Datatype recv_ccol_type0, recv_ccol_type;
-
-  if (argc != 4) {
-    fprintf(stderr, "Usage: ./matmul arows, acols, bcols\n");
-    exit(1);
-  }
-
-  arows = atoi(argv[1]);
-  acols = atoi(argv[2]);
-  bcols = atoi(argv[3]);
-
-  asize = arows * acols;
-
-  MPI_Init(NULL, NULL);
-
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-  ncols_per_proc = bcols / world_size;
-
-  MPI_Type_vector(acols,
-    1,
-    bcols,
-    MPI_DOUBLE,
-    &send_bcol_type0
-  );
-
-  MPI_Type_create_resized(
-    send_bcol_type0,
-    0,
-    sizeof(double),
-    &send_bcol_type
-  );
-
-  MPI_Type_vector(
-    acols,
-    1,
-    ncols_per_proc,
-    MPI_DOUBLE,
-    &recv_bcol_type0
-  );
-
-  MPI_Type_create_resized(
-    recv_bcol_type0,
-    0,
-    sizeof(double),
-    &recv_bcol_type
-  );
-
-  MPI_Type_vector(
-    arows,
-    1,
-    ncols_per_proc,
-    MPI_DOUBLE,
-    &send_ccol_type0
-  );
-
-  MPI_Type_create_resized(
-    send_ccol_type0,
-    0,
-    sizeof(double),
-    &send_ccol_type
-  );
-
-  MPI_Type_vector(
-    arows,
-    1,
-    bcols,
-    MPI_DOUBLE,
-    &recv_ccol_type0
-  );
-
-  MPI_Type_create_resized(
-    recv_ccol_type0,
-    0,
-    sizeof(double),
-    &recv_ccol_type
-  );
-
-  MPI_Type_commit(&send_bcol_type);
-  MPI_Type_commit(&recv_bcol_type);
-  MPI_Type_commit(&send_ccol_type);
-  MPI_Type_commit(&recv_ccol_type);
-
-  if (world_rank == 0) {
-    a = rand_mat(arows, acols);
-    b = rand_mat(acols, bcols);
-    bpt = *b;
-
-    c = alloc_mat(arows, bcols);
-    cpt = *c;
-  } else {
-    a = alloc_mat(arows, acols);
-    bpt = NULL;
-    cpt = NULL;
-  }
-
-  bcol = alloc_mat(acols, ncols_per_proc);
-  ccol = alloc_mat(arows, ncols_per_proc);
-
-  for (retry = 0; retry < RETRIES_COUNT; retry++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    if (world_rank == 0) start_time = MPI_Wtime();
-
-    MPI_Bcast(*a, asize, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    MPI_Scatter(
-      bpt,
-      ncols_per_proc,
-      send_bcol_type,
-      (*bcol),
-      ncols_per_proc,
-      recv_bcol_type,
-      0,
-      MPI_COMM_WORLD
-    );
-
-    for (i = 0; i < arows; i++) {
-      for (j = 0; j < ncols_per_proc; j++) {
-        sum = 0;
-
-        for (k = 0; k < acols; k++) {
-          sum += a[i][k] * bcol[k][j];
-        }
-
-        ccol[i][j] = sum;
-      }
-    }
-
-    MPI_Gather(
-      (*ccol),
-      ncols_per_proc,
-      send_ccol_type,
-      cpt,
-      ncols_per_proc,
-      recv_ccol_type,
-      0,
-      MPI_COMM_WORLD
-    );
-
-    total_time += MPI_Wtime() - start_time;
-  }
-
-  if (world_rank == 0) {
-    // print_mat(c, arows, bcols);
-    printf("%f", total_time / RETRIES_COUNT);
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Finalize();
-
-  return 0;
 }
