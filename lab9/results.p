@@ -15,5 +15,8 @@ set datafile separator ","
 
 set key left top box
 
-plot "results.out" using 1:3 title "GPU computation" with lines, \
-     "results.out" using 1:2 title "CPU computation" with lines
+set logscale y 10
+
+plot "results.out" using 1:2 title "GPU computation" with lines, \
+     "results.out" using 1:3 title "GPU CUBLAS computation" with lines, \
+     "results.out" using 1:4 title "CPU" with lines
